@@ -1,0 +1,260 @@
+{
+  "name": "Meowzo Daily Adventure (Final)",
+  "nodes": [
+    {
+      "parameters": {
+        "cronExpression": "0 8 * * *"
+      },
+      "name": "Trigger Daily",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 100],
+      "notes": "Runs every day at 8am."
+    },
+    {
+      "parameters": {
+        "url": "https://www.reddit.com/r/popular/top.json?limit=1&t=day",
+        "responseFormat": "json",
+        "jsonParse": true
+      },
+      "name": "Fetch Reddit Trend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 100],
+      "notes": "Fetches the top Reddit trend."
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ trend: items[0].json.data.children[0].data.title }];"
+      },
+      "name": "Extract Trend",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 100],
+      "notes": "Extracts the trend title."
+    },
+    {
+      "parameters": {
+        "url": "https://api-inference.huggingface.co/models/EleutherAI/gpt-j-6B",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "inputs",
+              "value": "Write a short, fun adventure story for Meowzo the talking cat who lives like a human. Today's trending topic is: {{$node[\"Extract Trend\"].json[\"trend\"]}}."
+            }
+          ]
+        },
+        "responseFormat": "json",
+        "jsonParse": true,
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_HUGGINGFACE_API_KEY"
+            }
+          ]
+        }
+      },
+      "name": "Generate Story",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [850, 100],
+      "notes": "Uses Hugging Face API. API key is hardcoded for local/testing."
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ story: items[0].json.generated_text.trim() }];"
+      },
+      "name": "Extract Story",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 100],
+      "notes": "Extracts the generated story."
+    },
+    {
+      "parameters": {
+        "url": "https://api.voicerss.org/",
+        "responseFormat": "file",
+        "jsonParse": false,
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "key",
+              "value": "YOUR_VOICERSS_API_KEY"
+            },
+            {
+              "name": "hl",
+              "value": "en-us"
+            },
+            {
+              "name": "c",
+              "value": "MP3"
+            },
+            {
+              "name": "src",
+              "value": "{{$node[\"Extract Story\"].json[\"story\"]}}"
+            }
+          ]
+        }
+      },
+      "name": "Generate Voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1250, 100],
+      "notes": "Uses VoiceRSS API. Replace with your API key."
+    },
+    {
+      "parameters": {
+        "fileName": "/data/voice.mp3",
+        "dataPropertyName": "data"
+      },
+      "name": "Save Voice File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1350, 100],
+      "notes": "Saves the TTS audio to /data/voice.mp3."
+    },
+    {
+      "parameters": {
+        "functionCode": "const exec = require('child_process').execSync;\nexec(\"ffmpeg -y -loop 1 -i /data/cat.png -vf zoompan=z='min(zoom+0.0005,1.5)':d=375 -c:v libx264 -t 15 -pix_fmt yuv420p /data/cat.mp4\");\nreturn [{json:{videoFile:'/data/cat.mp4'}}];"
+      },
+      "name": "Create Animation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 100],
+      "notes": "Creates a simple animated video from cat.png."
+    },
+    {
+      "parameters": {
+        "functionCode": "const exec = require('child_process').execSync;\nexec(\"ffmpeg -y -i /data/cat.mp4 -i /data/voice.mp3 -c:v copy -c:a aac /data/final.mp4\");\nreturn [{json:{filePath:'/data/final.mp4'}}];"
+      },
+      "name": "Merge Audio/Video",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1550, 100],
+      "notes": "Merges the video and audio into final.mp4."
+    },
+    {
+      "parameters": {
+        "filePath": "/data/final.mp4"
+      },
+      "name": "Read Final Video",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [1650, 100],
+      "notes": "Reads final.mp4 for upload."
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "binaryProperty": "data",
+        "title": "Meowzo Daily: {{$node[\"Extract Trend\"].json[\"trend\"]}}",
+        "description": "{{$node[\"Extract Story\"].json[\"story\"]}}",
+        "privacyStatus": "public"
+      },
+      "name": "Upload YouTube",
+      "type": "n8n-nodes-base.youtube",
+      "typeVersion": 1,
+      "position": [1850, 100],
+      "credentials": {
+        "youtubeOAuth2Api": "YouTube OAuth2 (set in Credentials)"
+      },
+      "notes": "Uploads to YouTube Shorts. Set up OAuth2 in Credentials."
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "\ud83d\udc3e *Meowzo's New Short!*\\n\\n\ud83c\udfa5 https://youtube.com/shorts/{{$node[\"Upload YouTube\"].json.videoId}}\\n\\n\ud83d\udcdd {{$node[\"Extract Story\"].json.story}}"
+      },
+      "name": "Notify Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2050, 100],
+      "credentials": {
+        "telegramApi": "Telegram Bot (set in Credentials)"
+      },
+      "notes": "Sends a Telegram notification. Set your chat ID and bot credentials."
+    }
+  ],
+  "connections": {
+    "Trigger Daily": {
+      "main": [
+        [
+          { "node": "Fetch Reddit Trend", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Reddit Trend": {
+      "main": [
+        [
+          { "node": "Extract Trend", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extract Trend": {
+      "main": [
+        [
+          { "node": "Generate Story", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Generate Story": {
+      "main": [
+        [
+          { "node": "Extract Story", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extract Story": {
+      "main": [
+        [
+          { "node": "Generate Voice", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Generate Voice": {
+      "main": [
+        [
+          { "node": "Save Voice File", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Save Voice File": {
+      "main": [
+        [
+          { "node": "Create Animation", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Create Animation": {
+      "main": [
+        [
+          { "node": "Merge Audio/Video", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Merge Audio/Video": {
+      "main": [
+        [
+          { "node": "Read Final Video", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Read Final Video": {
+      "main": [
+        [
+          { "node": "Upload YouTube", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Upload YouTube": {
+      "main": [
+        [
+          { "node": "Notify Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+} 
